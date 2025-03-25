@@ -661,30 +661,22 @@ def show_barcode_scanner():
             if item_data:
                 st.success(f"Found item: {item_data['name']} ({item_data['category']})")
                 
-                # Allow adding the scanned item to the current list
-                if st.button("Add to List"):
-                    # Get today's date for dates
-                    today = dt.date.today()
-                    
-                    # Create a new grocery item
-                    new_item = GroceryItem(
-                        item_data['name'],
-                        item_data['category'],
-                        item_data['cost'],
-                        None,  # No mfg date
-                        None,  # No exp date
-                        scanned_barcode  # Save the barcode with the item
-                    )
-                    
-                    # Add to the current list
-                    st.session_state.grocery_list.children.append(new_item)
-                    st.success(f"Added {item_data['name']} to your list")
-                    
-                    # Automatically save the list
-                    SQLiteListManager.save_list(
-                        st.session_state.current_list_id,
-                        st.session_state.grocery_list.children
-                    )
+                # Add the scanned item to the current list
+                new_item = GroceryItem(
+                    name=item_data['name'],
+                    category=item_data['category'],
+                    cost=item_data['cost'],
+                    barcode=scanned_barcode
+                )
+                st.session_state.grocery_list.children.append(new_item)
+                
+                # Save the updated list to the database
+                SQLiteListManager.save_list(
+                    st.session_state.current_list_id,
+                    st.session_state.grocery_list.children
+                )
+                
+                st.success(f"Added {item_data['name']} to the current list")
             else:
                 st.error(f"No item found for barcode: {scanned_barcode}")
                 
