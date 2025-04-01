@@ -1,0 +1,6 @@
+streamlit
+pandas
+plotly
+opencv-python
+SpeechRecognition
+reportlab

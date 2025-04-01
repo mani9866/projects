@@ -187,13 +187,14 @@ class GroceryComponent(ABC):
         pass
 
 class GroceryItem(GroceryComponent):
-    def __init__(self, name, category, cost=None, mfg_date=None, exp_date=None, barcode=None):
+    def __init__(self, name, category, cost=None, mfg_date=None, exp_date=None, barcode=None, quantity=1):
         self.name = name
         self.category = category
         self.cost = cost
         self.mfg_date = mfg_date
         self.exp_date = exp_date
         self.barcode = barcode
+        self.quantity = quantity
 
     def display(self):
         item_info = f"{self.name} ({self.category})"
@@ -205,6 +206,7 @@ class GroceryItem(GroceryComponent):
             item_info += f" - Exp: {self.exp_date}"
         if self.barcode:
             item_info += f" - Barcode: {self.barcode}"
+        item_info += f" - Quantity: {self.quantity}"
         return item_info
 
 class GroceryCategory(GroceryComponent):
@@ -255,7 +257,8 @@ class SQLiteListManager:
             'cost': item.cost,
             'mfg_date': item.mfg_date,
             'exp_date': item.exp_date,
-            'barcode': getattr(item, 'barcode', None)
+            'barcode': getattr(item, 'barcode', None),
+            'quantity': item.quantity  # Save quantity
         } for item in items])
         
         cursor.execute('''
@@ -282,7 +285,8 @@ class SQLiteListManager:
                 item.get('cost'),
                 item.get('mfg_date'),
                 item.get('exp_date'),
-                item.get('barcode')
+                item.get('barcode'),
+                item.get('quantity', 1)  # Load quantity, default to 1
             ) for item in items_data]
         return []
 
@@ -391,7 +395,7 @@ class PDFReport:
         total_cost = 0
         for item in items:
             if item.cost is not None:
-                total_cost += float(item.cost)
+                total_cost += float(item.cost) * item.quantity
         
         # Title
         c.setFont("Helvetica-Bold", 16)
@@ -407,6 +411,7 @@ class PDFReport:
         c.drawString(250, y_position, "Cost")
         c.drawString(300, y_position, "Mfg Date")
         c.drawString(380, y_position, "Exp Date")
+        c.drawString(450, y_position, "Quantity")
         
         # Line under header
         y_position -= 5
@@ -421,6 +426,7 @@ class PDFReport:
             c.drawString(250, y_position, f"${item.cost}" if item.cost else "-")
             c.drawString(300, y_position, item.mfg_date if item.mfg_date else "-")
             c.drawString(380, y_position, item.exp_date if item.exp_date else "-")
+            c.drawString(450, y_position, str(item.quantity))
             
             y_position -= 20
             
@@ -436,6 +442,7 @@ class PDFReport:
                 c.drawString(250, y_position, "Cost")
                 c.drawString(300, y_position, "Mfg Date")
                 c.drawString(380, y_position, "Exp Date")
+                c.drawString(450, y_position, "Quantity")
                 
                 # Line under header
                 y_position -= 5
@@ -839,6 +846,8 @@ def main():
                 exp_date = st.date_input("Expiry Date", value=None, key="exp_date")
                 exp_date_str = exp_date.strftime("%Y-%m-%d") if exp_date else None
             
+            quantity = st.number_input("Quantity", min_value=1, step=1, value=1)
+            
             if st.button("Add Item"):
                 if item_name:
                     new_item = GroceryItem(
@@ -846,7 +855,8 @@ def main():
                         item_category, 
                         item_cost,
                         mfg_date_str,
-                        exp_date_str
+                        exp_date_str,
+                        quantity=quantity
                     )
                     st.session_state.grocery_list.children.append(new_item)
                     st.success(f"Added {item_name}")
@@ -886,7 +896,8 @@ def main():
                         "Cost": f"${item.cost}" if item.cost else "-",
                         "Mfg Date": item.mfg_date if item.mfg_date else "-",
                         "Exp Date": item.exp_date if item.exp_date else "-",
-                        "Barcode": item.barcode if hasattr(item, 'barcode') and item.barcode else "-"
+                        "Barcode": item.barcode if hasattr(item, 'barcode') and item.barcode else "-",
+                        "Quantity": item.quantity
                     })
                 
                 # Create DataFrame
@@ -894,7 +905,7 @@ def main():
                 
                 # Display table
                 st.dataframe(
-                    df[["Item", "Category", "Cost", "Mfg Date", "Exp Date", "Barcode"]],
+                    df[["Item", "Category", "Cost", "Mfg Date", "Exp Date", "Barcode", "Quantity"]],
                     hide_index=True,
                     use_container_width=True
                 )
@@ -926,7 +937,7 @@ def main():
                 total_cost = 0
                 for item in st.session_state.grocery_list.children:
                     if item.cost is not None:
-                        total_cost += float(item.cost)
+                        total_cost += float(item.cost) * item.quantity
                         
                 # Display cost summary
                 st.metric("Total Cost", f"${total_cost:.2f}")
@@ -966,7 +977,7 @@ def main():
                         
                         # Calculate total cost for this list
                         items_data = json.loads(items_json)
-                        list_total = sum(float(item.get('cost', 0) or 0) for item in items_data)
+                        list_total = sum(float(item.get('cost', 0) or 0) * item.get('quantity', 1) for item in items_data)
                         
                         chart_data.append({
                             'date': list_id,
@@ -1060,7 +1071,7 @@ def main():
                             all_category_data.append({
                                 'category': item.get('category', 'Uncategorized'),
                                 'name': item.get('name', 'Unknown Item'),
-                                'cost': float(item.get('cost', 0) or 0)
+                                'cost': float(item.get('cost', 0) or 0) * item.get('quantity', 1)
                             })
                     
                     if all_category_data:
