@@ -5,9 +5,9 @@ from auth_manager import AuthManager
 from database_manager import SQLiteDatabaseManager
 from grocery_components import GroceryCategory, GroceryItem
 from barcode_manager import BarcodeManager
+from barcode_scanner import BarcodeScanner  # Add this import
 from helpers import VoiceInputHandler, PDFReport
-from barcode_scanner import BarcodeScanner  # Remove incorrect import of show_barcode_scanner
-from grocery_app import SQLiteListManager, show_user_management  # Import show_user_management
+from grocery_app import SQLiteListManager, show_barcode_scanner, show_user_management  # Import show_barcode_scanner and show_user_management
 import pandas as pd
 import plotly.express as px
 import re
@@ -81,10 +81,10 @@ def main():
             st.session_state.logged_in = False
             st.session_state.username = None
             st.session_state.role = None
-            st.experimental_rerun()
+            st.rerun()
         
         if st.button("Reload App"):
-            st.experimental_rerun()
+            st.rerun()
     
     # Map selected tab to corresponding functionality
     if st.session_state.current_tab == "My Lists":
@@ -142,7 +142,7 @@ def show_login_form():
                 st.session_state.role = role
                 st.success(f"Logged in as {username} ({role})")
                 time.sleep(1)
-                st.experimental_rerun()
+                st.rerun()
                 return True
             else:
                 st.error("Invalid username or password")
@@ -151,52 +151,6 @@ def show_login_form():
             return False
     
     return False
-
-def show_barcode_scanner():
-    """Display the barcode scanner functionality"""
-    st.header("📷 Barcode Scanner")
-    
-    # Add a "Scan Now" button
-    if st.button("Scan Now"):
-        scanned_barcode = BarcodeScanner.scan_barcode()
-        
-        if scanned_barcode:
-            # Look up the item by barcode
-            item_data = BarcodeManager.get_item_by_barcode(scanned_barcode)
-            
-            if item_data:
-                # Check if the item already exists in the list
-                existing_item = next(
-                    (item for item in st.session_state.grocery_list.children if item.barcode == scanned_barcode),
-                    None
-                )
-                
-                if existing_item:
-                    # Increase the quantity of the existing item
-                    existing_item.quantity += 1
-                    st.success(f"Increased quantity of {existing_item.name} to {existing_item.quantity}")
-                else:
-                    # Add the scanned item as a new item
-                    new_item = GroceryItem(
-                        name=item_data['name'],
-                        category=item_data['category'],
-                        cost=item_data['cost'],
-                        barcode=scanned_barcode,
-                        quantity=1
-                    )
-                    st.session_state.grocery_list.children.append(new_item)
-                    st.success(f"Added {item_data['name']} to the current list")
-                
-                # Save the updated list to the database
-                SQLiteListManager.save_list(
-                    st.session_state.current_list_id,
-                    st.session_state.grocery_list.children
-                )
-            else:
-                st.error(f"No item found for barcode: {scanned_barcode}")
-                
-                if st.session_state.role == 'admin':
-                    st.info("As an admin, you can add this barcode in the Barcode Management section")
 
 def show_barcode_management():
     """Display the barcode management section for admins"""
@@ -251,6 +205,13 @@ def show_barcode_management():
             if scanned_barcode:
                 st.session_state.scanned_barcode = scanned_barcode  # Update session state with the scanned barcode
                 st.success(f"Scanned Barcode: {scanned_barcode}")
+    
+    if "scanned_barcode" in st.session_state and st.session_state.scanned_barcode:
+        if st.button("Add Scanned Barcode to Item Name"):
+            item_name = st.session_state.scanned_barcode
+            st.success(f"Scanned barcode added to form: {item_name}")
+            st.session_state.scanned_barcode = None
+            st.rerun()
     
     # Form to delete barcode
     st.subheader("Delete Barcode")
@@ -334,53 +295,34 @@ def show_my_lists(today_date):
         # Add item form
         st.header("➕ Add Item")
         
-        # Fill in the name field with voice input if available
-        if st.session_state.voice_input:
+        # Populate the "Item Name" field with scanned item or voice input if available
+        if "scanned_item_name" in st.session_state and st.session_state.scanned_item_name:
+            item_name = st.text_input("Item Name", value=st.session_state.scanned_item_name)
+        elif "voice_input" in st.session_state and st.session_state.voice_input:
             item_name = st.text_input("Item Name", value=st.session_state.voice_input)
-            # Clear the voice input after using it
-            if st.button("Clear Voice Input"):
-                st.session_state.voice_input = None
-                st.experimental_rerun()
         else:
             item_name = st.text_input("Item Name")
-            
+        
         item_category = st.selectbox("Category", ["Produce", "Dairy", "Meat", "Bakery", "Canned Goods", "Frozen", "Other"])
-        
-        # New input field for quantity
         item_quantity = st.number_input("Quantity", min_value=1, step=1, value=1, key="quantity_input")
-        
         item_cost = st.text_input("Cost ($)", key="cost_input")
-        # Convert empty strings to None
-        if item_cost and item_cost.strip():
-            try:
-                item_cost = float(item_cost)
-            except ValueError:
-                st.error("Cost must be a number")
-                item_cost = None
-        else:
-            item_cost = None
-        
-        col1_a, col1_b = st.columns(2)
-        with col1_a:
-            mfg_date = st.date_input("Manufacturing Date", value=None, key="mfg_date")
-            mfg_date_str = mfg_date.strftime("%Y-%m-%d") if mfg_date else None
-        with col1_b:
-            exp_date = st.date_input("Expiry Date", value=None, key="exp_date")
-            exp_date_str = exp_date.strftime("%Y-%m-%d") if exp_date else None
+        mfg_date = st.date_input("Manufacturing Date", value=None, key="mfg_date")
+        exp_date = st.date_input("Expiry Date", value=None, key="exp_date")
         
         if st.button("Add Item"):
             if item_name:
                 new_item = GroceryItem(
                     item_name, 
                     item_category, 
-                    item_cost,
-                    mfg_date_str,
-                    exp_date_str
+                    float(item_cost) if item_cost else None,
+                    mfg_date.strftime("%Y-%m-%d") if mfg_date else None,
+                    exp_date.strftime("%Y-%m-%d") if exp_date else None
                 )
-                new_item.quantity = item_quantity  # Add quantity to the item
+                new_item.quantity = item_quantity
                 st.session_state.grocery_list.children.append(new_item)
                 st.success(f"Added {item_name} (x{item_quantity})")
-                # Clear voice input after adding
+                # Clear scanned item and voice input after adding
+                st.session_state.scanned_item_name = None
                 st.session_state.voice_input = None
             else:
                 st.error("Please enter an item name")
@@ -390,10 +332,34 @@ def show_my_lists(today_date):
         if st.button("Add Item by Voice"):
             voice_text = VoiceInputHandler.listen_for_items()
             if voice_text:
-                st.session_state['voice_input'] = voice_text
+                st.session_state.voice_input = voice_text
                 st.success(f"Voice input detected: {voice_text}")
-            else:
-                st.error("No voice input detected")
+        
+        if "voice_input" in st.session_state and st.session_state.voice_input:
+            if st.button("Add Voice Input to Item Name"):
+                item_name = st.session_state.voice_input
+                st.success(f"Voice input added to form: {item_name}")
+                st.session_state.voice_input = None
+                st.rerun()
+        
+        # Barcode Scanner Section
+        st.header("📷 Barcode Scanner")
+        if st.button("Scan Barcode"):
+            scanned_barcode = BarcodeScanner.scan_barcode()
+            if scanned_barcode:
+                item_data = BarcodeManager.get_item_by_barcode(scanned_barcode)
+                if item_data:
+                    st.session_state.scanned_item_name = item_data['name']
+                    st.session_state.scanned_item_category = item_data['category']
+                    st.session_state.scanned_item_cost = item_data['cost']
+                    st.success(f"Scanned item: {item_data['name']} ({item_data['category']})")
+                else:
+                    st.error("No item found for the scanned barcode")
+        
+        if "scanned_item_name" in st.session_state and st.session_state.scanned_item_name:
+            if st.button("Add Scanned Item to Item Name"):
+                st.success(f"Scanned item added to form: {st.session_state.scanned_item_name}")
+                st.rerun()
     
     with col2:
         # Main content area
@@ -444,7 +410,7 @@ def show_my_lists(today_date):
                 if selected_index is not None and st.button("Remove Selected Item"):
                     st.session_state.grocery_list.children.pop(selected_index)
                     st.success(f"Removed {items_to_select[selected_index].split('. ')[1]}")
-                    st.experimental_rerun()
+                    st.rerun()
         else:
             # Display single message for empty list
             st.info("No items in this list yet. Add items using the form in the sidebar.")
