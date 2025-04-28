@@ -1,13 +1,12 @@
 import streamlit as st
 import datetime as dt
-import time
 from auth_manager import AuthManager
 from database_manager import SQLiteDatabaseManager
 from grocery_components import GroceryCategory, GroceryItem
 from barcode_manager import BarcodeManager
-from barcode_scanner import BarcodeScanner  # Add this import
+from barcode_manager import BarcodeScanner  # Add this import
 from helpers import VoiceInputHandler, PDFReport
-from grocery_app import SQLiteListManager, show_barcode_scanner, show_user_management  # Import show_barcode_scanner and show_user_management
+from grocery_app import SQLiteListManager, show_user_management  # Import show_barcode_scanner and show_user_management
 import pandas as pd
 import plotly.express as px
 import re
@@ -15,15 +14,14 @@ import json
 
 def main():
     try:
-        # Initialize database
+        # Initializing database
         SQLiteDatabaseManager.initialize_database()
     except Exception as e:
         st.error(f"Error initializing database: {e}")
         return
     
     # Set up page configuration
-    st.set_page_config(page_title="Smart Grocery List", layout="wide")
-    
+    st.set_page_config(page_title="Smart Grocery List", layout="wide",page_icon="🛒",initial_sidebar_state="collapsed")
     # Initialize session state for authentication
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
@@ -58,24 +56,21 @@ def main():
     # User is logged in, show the main app
     st.title(f"🛒 Grocery List Manager - Welcome {st.session_state.username}")
     
+    
     # Sidebar enhancements
     with st.sidebar:
+        st.header("👤 User Info")
+        st.write(f"**Username:** {st.session_state.username}")
+        st.write(f"**Role:** {st.session_state.role.capitalize()}")
         st.header("📋 Navigation")
         if st.button("📝 My Lists"):
             st.session_state.current_tab = "My Lists"
         if st.button("📊 Analytics"):
             st.session_state.current_tab = "Analytics"
-        if st.button("📷 Barcode Scanner"):
-            st.session_state.current_tab = "Barcode Scanner"
         if st.session_state.role == 'admin' and st.button("⚙️ Admin Panel"):
             st.session_state.current_tab = "Admin Panel"
         if st.button("ℹ️ About"):
             st.session_state.current_tab = "About"
-        
-        st.header("👤 User Info")
-        st.write(f"**Username:** {st.session_state.username}")
-        st.write(f"**Role:** {st.session_state.role.capitalize()}")
-        
         st.header("⚡ Quick Actions")
         if st.button("Logout"):
             st.session_state.logged_in = False
@@ -85,14 +80,11 @@ def main():
         
         if st.button("Reload App"):
             st.rerun()
-    
     # Map selected tab to corresponding functionality
     if st.session_state.current_tab == "My Lists":
         show_my_lists(today_date)
     elif st.session_state.current_tab == "Analytics":
         show_analytics()
-    elif st.session_state.current_tab == "Barcode Scanner":
-        show_barcode_scanner()
     elif st.session_state.current_tab == "Admin Panel" and st.session_state.role == 'admin':
         st.header("⚙️ Admin Panel")
         admin_tabs = st.tabs(["User Management", "Barcode Management"])
@@ -121,6 +113,25 @@ def main():
         ### Need Help?
         Contact your administrator for assistance.
         """)
+        # Get current year
+    current_year = dt.date.today().year
+
+    # Add some space before the copyright
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+
+    # Add a horizontal line as a separator
+    st.markdown("<hr>", unsafe_allow_html=True)
+
+    # Create the copyright text with current year and your name
+    copyright_text = f"© {current_year} Manikanta Sai Surya. All Rights Reserved."
+
+    # Add the copyright text with centered alignment
+    st.markdown(f"""
+    <div style="text-align: center; padding: 10px; color: gray; font-size: 0.8em;">
+        {copyright_text}
+    </div>
+    """, unsafe_allow_html=True)
+
 
 def show_login_form():
     """Display the login form"""
@@ -140,8 +151,6 @@ def show_login_form():
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.session_state.role = role
-                st.success(f"Logged in as {username} ({role})")
-                time.sleep(1)
                 st.rerun()
                 return True
             else:
@@ -241,13 +250,13 @@ def show_my_lists(today_date):
     
     with col1:
         st.header("🔗 List Management")
-        list_id = st.text_input("Enter/Create List ID", value=today_date)
+        list_id = st.date_input("Enter/Create List ID", value=today_date)
         
         # Show warning if trying to view a different list
         if list_id != st.session_state.current_list_id:
             st.warning("⚠️ Click 'Load List' to switch")
         
-        col1_1, col1_2 = st.columns(2)
+        col1_1, col1_2, col1_3 = st.columns(3)
         
         with col1_1:
             if st.button("Load List"):
@@ -309,7 +318,8 @@ def show_my_lists(today_date):
         mfg_date = st.date_input("Manufacturing Date", value=None, key="mfg_date")
         exp_date = st.date_input("Expiry Date", value=None, key="exp_date")
         
-        if st.button("Add Item"):
+        
+        if st.button("Add Item Manually"):
             if item_name:
                 new_item = GroceryItem(
                     item_name, 
@@ -328,8 +338,7 @@ def show_my_lists(today_date):
                 st.error("Please enter an item name")
         
         # Voice Input Section
-        st.header("🎤 Voice Input")
-        if st.button("Add Item by Voice"):
+        if st.button("🎤Add Item By Voice"):
             voice_text = VoiceInputHandler.listen_for_items()
             if voice_text:
                 st.session_state.voice_input = voice_text
@@ -343,8 +352,7 @@ def show_my_lists(today_date):
                 st.rerun()
         
         # Barcode Scanner Section
-        st.header("📷 Barcode Scanner")
-        if st.button("Scan Barcode"):
+        if st.button("📷Add Item By Scan"):
             scanned_barcode = BarcodeScanner.scan_barcode()
             if scanned_barcode:
                 item_data = BarcodeManager.get_item_by_barcode(scanned_barcode)
@@ -439,7 +447,7 @@ def show_my_lists(today_date):
                 )
         else:
             st.info("Add items to see cost summary")
-            st.error("Cannot export an empty list")
+            st.error("Cannot export an empty list as PDF add items first or load an existing list")
 
 def show_analytics():
     """Display the Analytics tab functionality"""
@@ -637,6 +645,7 @@ def show_analytics():
             st.info("No date-based lists found for generating the monthly cost chart.")
     else:
         st.info("Add more lists with dates as IDs to see monthly cost trends.")
+    
 
 if __name__ == "__main__":
     main()
