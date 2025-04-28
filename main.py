@@ -256,7 +256,7 @@ def show_my_lists(today_date):
         if list_id != st.session_state.current_list_id:
             st.warning("⚠️ Click 'Load List' to switch")
         
-        col1_1, col1_2, col1_3 = st.columns(3)
+        col1_1, col1_2, = st.columns(2)
         
         with col1_1:
             if st.button("Load List"):
